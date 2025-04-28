@@ -1,13 +1,8 @@
 package com.sin.management_system.ui.auths;
 
-import com.vaadin.flow.component.html.H1;
 
 import com.sin.management_system.applications.auths.RegisterRequest;
-import com.sin.management_system.applications.roles.RoleService;
-import com.sin.management_system.applications.users.UserService;
-import com.sin.management_system.domains.roles.Role;
-import com.sin.management_system.domains.users.User;
-import com.sin.management_system.infrastructures.utils.NotificationService;
+import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.formlayout.FormLayout;
@@ -19,7 +14,6 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.sin.management_system.infrastructures.utils.Constants;
 
@@ -27,12 +21,8 @@ import com.sin.management_system.infrastructures.utils.Constants;
 @AnonymousAllowed
 @RequiredArgsConstructor
 public class RegisterView extends VerticalLayout {
-    private final UserService userService;
-    private final RoleService roleService;
-    private final PasswordEncoder encoder;
-    private final NotificationService notificationUtil;
     private final Binder<RegisterRequest> binder = new Binder<>(RegisterRequest.class);
-
+    private final RegisterViewService registerViewService;
 
     private TextField usernameField;
     private TextField fullNameField;
@@ -44,50 +34,16 @@ public class RegisterView extends VerticalLayout {
     @PostConstruct
     private void init() {
         setSizeFull();
-        getStyle()
-                .set("background-image", "url('" + Constants.BACKGROUND_IMAGE_PATH + "')")
-                .set("background-size", "cover")
-                .set("background-position", "center")
-                .set("height", "100vh");
+        initBackground();
         setAlignItems(Alignment.CENTER);
         setJustifyContentMode(JustifyContentMode.CENTER);
         setUpForm();
-
     }
 
     public void setUpForm() {
-        usernameField = new TextField("Username (*)");
-        emailField = new EmailField("Email (*)");
-        fullNameField = new TextField("Full Name (*)");
-        passwordField = new PasswordField("Password (*)");
-        confirmPasswordField = new PasswordField("Confirm Password (*)");
-
-        registerButton = new Button("Register", event -> registerUser());
-        registerButton.setEnabled(false);
-        registerButton.getStyle().set("margin", "18px");
-        H1 welcome = new H1("WELCOME");
-
-        FormLayout formLayout = new FormLayout();
-        formLayout.setWidth("400px");
-        formLayout.getStyle().set("padding", "20px");
-        formLayout.getStyle().set("border", "1px solid #ccc");
-        formLayout.getStyle().set("border-radius", "10px");
-        formLayout.getStyle().set("background", "#f9f9f9");
-
-        formLayout.add(
-                fullNameField,
-                usernameField,
-                emailField,
-                passwordField,
-                confirmPasswordField,
-                registerButton);
-        add(welcome);
-
-        VerticalLayout formWrapper = new VerticalLayout(formLayout);
-        formWrapper.setWidth("auto");
-        formWrapper.setAlignItems(Alignment.CENTER);
-        formWrapper.setJustifyContentMode(JustifyContentMode.CENTER);
-        add(formWrapper);
+        initField();
+        initButton();
+        initLayout();
         setUpValidation();
     }
 
@@ -139,19 +95,62 @@ public class RegisterView extends VerticalLayout {
                 registerButton.setEnabled(binder.isValid()));
     }
 
+    private void initBackground() {
+        getStyle()
+                .set("background-image", "url('" + Constants.BACKGROUND_IMAGE_PATH + "')")
+                .set("background-size", "cover")
+                .set("background-position", "center")
+                .set("height", "100vh");
+    }
 
-    private void registerUser() {
-        RegisterRequest request = buildRegisterRequest();
+    private void initField() {
+        usernameField = new TextField("Username (*)");
+        emailField = new EmailField("Email (*)");
+        fullNameField = new TextField("Full Name (*)");
+        passwordField = new PasswordField("Password (*)");
+        confirmPasswordField = new PasswordField("Confirm Password (*)");
+    }
 
-        if (userService.existsByUsernameOrEmail(request.getUsername(), request.getEmail())) {
-            notificationUtil.showNotification("Username or Email already exists!");
-            return;
-        }
+    private void initButton() {
+        registerButton = new Button("Register",
+                event -> handleRegister());
+        registerButton.setEnabled(false);
+        registerButton.getStyle().set("margin", "18px");
+    }
 
-        if (!binder.writeBeanIfValid(request)) {
-            notificationUtil.showNotification("Please try again!");
-        }
-        createUser(request);
+    private void handleRegister() {
+        registerViewService.handleRegister(buildRegisterRequest());
+        navigateToLogin();
+        registerViewService.showNotificationCreateUser();
+    }
+
+    private void initLayout() {
+        H2 title = new H2("Register");
+
+        FormLayout formLayout = new FormLayout();
+        formLayout.setWidth("400px");
+        formLayout.getStyle()
+                .set("padding", "20px")
+                .set("background", "rgba(255, 255, 255, 0.2)")
+                .set("border", "1px solid rgba(255, 255, 255, 0.3)")
+                .set("border-radius", "10px")
+                .set("backdrop-filter", "blur(10px)");
+
+        formLayout.add(
+                fullNameField,
+                usernameField,
+                emailField,
+                passwordField,
+                confirmPasswordField,
+                registerButton);
+
+
+        VerticalLayout formWrapper = new VerticalLayout(formLayout);
+        formWrapper.setWidth("auto");
+        formWrapper.setAlignItems(Alignment.CENTER);
+        formWrapper.setJustifyContentMode(JustifyContentMode.CENTER);
+
+        add(title, formWrapper);
     }
 
     private RegisterRequest buildRegisterRequest() {
@@ -162,30 +161,6 @@ public class RegisterView extends VerticalLayout {
                 .password(passwordField.getValue())
                 .confirmPassword(confirmPasswordField.getValue())
                 .build();
-    }
-
-    private void createUser(RegisterRequest request) {
-        Role roleDefault = roleService.getRoleDefault().orElseThrow();
-
-        User newUser = User.builder()
-                .username(request.getUsername())
-                .email(request.getEmail())
-                .fullName(request.getFullName())
-                .role(roleDefault)
-                .provider("local")
-                .providerId(null)
-                .password(encoder.encode(request.getPassword()))
-                .build();
-        User saveUser = userService.saveNewUser(newUser);
-        if (saveUser == null) {
-            notificationUtil.showNotification("Something went wrong!");
-        }
-        notificationUtil.showNotification("User create successful!");
-        clearForm();
-    }
-
-    private void clearForm() {
-        binder.readBean(new RegisterRequest());
     }
 
     private void navigateToLogin() {
